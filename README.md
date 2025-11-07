@@ -62,6 +62,14 @@ For GPU acceleration (requires CUDA):
 pip install -e ".[gpu]"
 ```
 
+### OpenCV Support
+
+For advanced image processing features (optional):
+
+```bash
+pip install -e ".[opencv]"
+```
+
 ## Quick Start
 
 ### 1. Making Predictions

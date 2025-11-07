@@ -31,11 +31,17 @@ def load_image(image_path: Union[str, Path]) -> np.ndarray:
         return np.array(img)
     except ImportError:
         # Fallback if PIL is not available
-        import cv2
-        img = cv2.imread(str(image_path))
-        if img is not None:
-            return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        raise FileNotFoundError(f"Could not load image: {image_path}")
+        try:
+            import cv2
+            img = cv2.imread(str(image_path))
+            if img is not None:
+                return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            raise FileNotFoundError(f"Could not load image: {image_path}")
+        except ImportError:
+            raise ImportError(
+                "Image loading requires either PIL (Pillow) or OpenCV. "
+                "Install with: pip install Pillow  or  pip install opencv-python"
+            )
 
 
 def preprocess_image(

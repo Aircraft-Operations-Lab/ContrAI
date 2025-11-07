@@ -44,6 +44,9 @@ setup(
         "gpu": [
             "torch>=1.9.0",
         ],
+        "opencv": [
+            "opencv-python>=4.5.0",
+        ],
     },
     entry_points={
         "console_scripts": [

@@ -47,13 +47,14 @@ def predict_contrails(
     preprocessed = preprocess_image(image)
     
     # TODO: Load model and run inference
-    # For now, return a dummy prediction
-    # In a real implementation, you would:
-    # 1. Load the model from model_path
+    # NOTE: This is a placeholder implementation for demonstration purposes.
+    # In a production implementation, you would:
+    # 1. Load the trained model from model_path
     # 2. Run inference on preprocessed image
-    # 3. Apply threshold
+    # 3. Apply threshold to get binary mask
     
     # Placeholder: return dummy prediction mask
+    # Replace this with actual model inference in production
     prediction = np.random.rand(*image.shape[:2]) > threshold
     
     # Postprocess the prediction
