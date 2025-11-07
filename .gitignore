@@ -88,3 +88,7 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+
+# Output files
+output/
+
