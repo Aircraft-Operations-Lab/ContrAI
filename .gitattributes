@@ -1,3 +1,4 @@
+*.pth filter=lfs diff=lfs merge=lfs -text
 **/instances_train7.json filter=lfs diff=lfs merge=lfs -text
 datasets/**/annotations/coco_format/*.json filter=lfs diff=lfs merge=lfs -text
 contrai/**/annotations/coco_format/*.json filter=lfs diff=lfs merge=lfs -text
