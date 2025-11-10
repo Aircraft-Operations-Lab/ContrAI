@@ -7,7 +7,7 @@ from IPython.display import display, Image as IPImage
 import cv2
 import numpy as np
 from tqdm import tqdm
-from .utils import preprocess_tile2, Full_scene_probab_mask1, predict_single_tile
+from .utils import preprocess_tile2, Full_Scene_Probability_Mask, predict_single_tile
 
 
 
@@ -16,7 +16,7 @@ def overlay_predict_images(images_paths,model):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     overlayed_images = []
     for image_path in tqdm(images_paths):
-        mask, image = Full_scene_probab_mask1(model, image_path, device)
+        mask, image = Full_Scene_Probability_Mask(model, image_path, device)
         overlayed_image = overlay_mask_on_image(image, mask)
         overlayed_images.append(overlayed_image)
     return overlayed_images

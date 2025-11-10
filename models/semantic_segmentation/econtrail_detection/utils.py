@@ -107,7 +107,7 @@ def predict_tiles(images_paths,model):
 
 
 
-def sliding_window_predict2(model, image, device, tile_h, tile_w, stride, th):
+def Sliding_Window(model, image, device, tile_h, tile_w, stride, th):
     """
     Tiled inference with overlap (stride) and edge handling.
     Supports rectangular tiles (tile_h x tile_w).
@@ -160,7 +160,7 @@ def sliding_window_predict2(model, image, device, tile_h, tile_w, stride, th):
     return full_prob
 
 
-def Full_scene_probab_mask1(model, image_path, device, tile_h, tile_w, stride, th=None):
+def Full_Scene_Probability_Mask(model, image_path, device, tile_h, tile_w, stride, th=None):
     """
     Run tiled inference and produce a full-scene probability mask.
 
@@ -172,7 +172,7 @@ def Full_scene_probab_mask1(model, image_path, device, tile_h, tile_w, stride, t
     """
     image = Image.open(image_path).convert("RGB")
 
-    prob = sliding_window_predict2(
+    prob = Sliding_Window(
         model, image, device,
         tile_h=tile_h, tile_w=tile_w,
         stride=stride, th=th
