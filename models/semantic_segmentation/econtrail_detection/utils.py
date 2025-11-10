@@ -87,54 +87,6 @@ def postprocess_mask(mask,th):
     return mask
 
 
-def predict_single_tile(model, image, device, tile_size,th):
-    """
-    Predicts a single tile from the given image.
-
-    Parameters:
-    - model: The trained model for prediction.
-    - image: Input image (PIL.Image format or NumPy array).
-    - device: PyTorch device (e.g., 'cpu' or 'cuda').
-    - tile_size: Size of the tile for processing.
-
-    Returns:
-    - predicted_tile_mask: Predicted mask for the specified tile.
-    """
-    # Ensure image is in PIL format
-    if isinstance(image, np.ndarray):
-        image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-
-    width, height = image.size
-
-    # Extract the first tile from the top-left corner
-    x, y = 0, 0
-    x_end = min(x + tile_size, width)
-    y_end = min(y + tile_size, height)
-
-    # Crop and process the tile
-    tile = image.crop((x, y, x_end, y_end))
-
-    # Resize the tile to 256x256 for the model if necessary
-    if tile_size != 256:
-        tile = cv2.resize(np.array(tile), (256, 256), interpolation=cv2.INTER_LINEAR)
-    else:
-        tile = np.array(tile)
-
-    tile_tensor = preprocess_tile2(tile).to(device)
-
-    with torch.no_grad():
-        output = model(tile_tensor)
-
-    # Postprocess the model output to generate a mask
-    predicted_tile_mask = postprocess_mask(output,th)
-
-    # Resize back to the original tile size if resized earlier
-    if tile_size != 256:
-        predicted_tile_mask = cv2.resize(predicted_tile_mask, (tile_size, tile_size), interpolation=cv2.INTER_LINEAR)
-
-    return predicted_tile_mask
-
-
 
 def create_img_masks_lists(images_path,masks_path):
     images_list=sorted([Image.open(os.path.join(images_path,im)for im in os.listdir(images_path))])
@@ -153,9 +105,12 @@ def predict_tiles(images_paths,model):
         masks.append(mask)
     return masks
 
-def sliding_window_predict2(model, image, device, tile_size, stride, th):
+
+
+def sliding_window_predict2(model, image, device, tile_h, tile_w, stride, th):
     """
     Tiled inference with overlap (stride) and edge handling.
+    Supports rectangular tiles (tile_h x tile_w).
     Returns a probability mask in [0,1], averaged over overlaps.
     """
     width, height = image.size
@@ -164,21 +119,21 @@ def sliding_window_predict2(model, image, device, tile_size, stride, th):
     accum = np.zeros((height, width), dtype=np.float32)
     weight = np.zeros((height, width), dtype=np.float32)
 
-    # Step over the image with given stride; ensure we also cover the right/bottom edges
-    ys = list(range(0, max(height - tile_size + 1, 1), stride))
-    xs = list(range(0, max(width  - tile_size + 1, 1), stride))
-    if ys[-1] != height - tile_size:
-        ys.append(max(height - tile_size, 0))
-    if xs[-1] != width - tile_size:
-        xs.append(max(width - tile_size, 0))
+    # Step over the image with given stride; ensure right/bottom edges are covered
+    ys = list(range(0, max(height - tile_h + 1, 1), stride))
+    xs = list(range(0, max(width - tile_w + 1, 1), stride))
+    if ys[-1] != height - tile_h:
+        ys.append(max(height - tile_h, 0))
+    if xs[-1] != width - tile_w:
+        xs.append(max(width - tile_w, 0))
 
     for y in ys:
         for x in xs:
-            # Crop tile (tile_size x tile_size)
-            tile = image.crop((x, y, x + tile_size, y + tile_size))
+            # Crop tile (tile_w x tile_h)
+            tile = image.crop((x, y, x + tile_w, y + tile_h))
 
-            # Resize to model's input if needed (256 here)
-            if tile_size != 256:
+            # Resize to model’s input if needed (e.g., 256×256)
+            if (tile_h, tile_w) != (256, 256):
                 tile_np = cv2.resize(np.array(tile), (256, 256), interpolation=cv2.INTER_LINEAR)
             else:
                 tile_np = np.array(tile)
@@ -188,18 +143,16 @@ def sliding_window_predict2(model, image, device, tile_size, stride, th):
             with torch.no_grad():
                 output = model(tile_tensor)
 
-            # IMPORTANT: postprocess should return PROBABILITIES in [0,1].
-            # If yours returns a binary mask already, consider adding a `postprocess_prob`
-            # so we can average probabilities and threshold once at the end.
-            prob_tile = postprocess_mask(output, th)  # expects float probs
+            # postprocess_mask should return probabilities in [0, 1]
+            prob_tile = postprocess_mask(output, th)
 
-            # Back to tile_size if we resized earlier
-            if tile_size != 256:
-                prob_tile = cv2.resize(prob_tile, (tile_size, tile_size), interpolation=cv2.INTER_LINEAR)
+            # Resize back to original tile size if we resized earlier
+            if (tile_h, tile_w) != (256, 256):
+                prob_tile = cv2.resize(prob_tile, (tile_w, tile_h), interpolation=cv2.INTER_LINEAR)
 
             # Accumulate and count overlaps
-            accum[y:y + tile_size, x:x + tile_size] += prob_tile
-            weight[y:y + tile_size, x:x + tile_size] += 1.0
+            accum[y:y + tile_h, x:x + tile_w] += prob_tile
+            weight[y:y + tile_h, x:x + tile_w] += 1.0
 
     # Avoid division by zero
     weight = np.maximum(weight, 1e-6)
@@ -207,30 +160,26 @@ def sliding_window_predict2(model, image, device, tile_size, stride, th):
     return full_prob
 
 
-def Full_scene_probab_mask1(model, image_path, device, tile_sizes, stride, th=None):
+def Full_scene_probab_mask1(model, image_path, device, tile_h, tile_w, stride, th=None):
     """
-    Run multi-scale tiled inference and average the probability maps.
+    Run tiled inference and produce a full-scene probability mask.
 
-    tile_sizes: list/tuple of ints, e.g., [250, 500, 100]
-    stride: int, overlap step in pixels
+    tile_h, tile_w: int
+        Tile height and width (pixels)
+    stride: int
+        Overlap step in pixels
     th: optional threshold to binarize final averaged probs
     """
-    image = Image.open(image_path).convert('RGB')
+    image = Image.open(image_path).convert("RGB")
 
-    prob_maps = []
-    for ts in tile_sizes:
-        prob = sliding_window_predict2(model, image, device, tile_size=ts, stride=stride, th=th)
-        prob_maps.append(prob)
-
-    prob_avg = np.mean(prob_maps, axis=0)
+    prob = sliding_window_predict2(
+        model, image, device,
+        tile_h=tile_h, tile_w=tile_w,
+        stride=stride, th=th
+    )
 
     if th is not None:
-        mask = (prob_avg >= th).astype(np.float32)
+        mask = (prob >= th).astype(np.float32)
         return mask, image
     else:
-        return prob_avg, image
-
-
-
-
-
+        return prob, image
