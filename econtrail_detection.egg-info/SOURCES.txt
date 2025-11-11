@@ -1,0 +1,17 @@
+LICENSE
+pyproject.toml
+setup.cfg
+econtrail_detection.egg-info/PKG-INFO
+econtrail_detection.egg-info/SOURCES.txt
+econtrail_detection.egg-info/dependency_links.txt
+econtrail_detection.egg-info/requires.txt
+econtrail_detection.egg-info/top_level.txt
+models/__init__.py
+models/semantic_segmentation/__init__.py
+models/semantic_segmentation/econtrail_detection/CoaT_U.py
+models/semantic_segmentation/econtrail_detection/__init__.py
+models/semantic_segmentation/econtrail_detection/coat.py
+models/semantic_segmentation/econtrail_detection/predict.py
+models/semantic_segmentation/econtrail_detection/predict_old.py
+models/semantic_segmentation/econtrail_detection/utils.py
+models/semantic_segmentation/econtrail_detection/vis.py

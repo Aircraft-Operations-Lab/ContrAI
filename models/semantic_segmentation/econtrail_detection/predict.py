@@ -1,83 +1,90 @@
+"""
+Prediction utilities and CLI for contrail segmentation.
+
+Provides a library-style :func:`predict` function for use in Python code
+and notebooks, and a command-line interface when executed as a module.
+
+Example
+-------
+From Python::
+
+    from models.semantic_segmentation.econtrail_detection.predict import predict
+
+    overlay, mask, image = predict(
+        model_path="path/to/model.pth",
+        image_path="path/to/image.png",
+        tile_h=256,
+        tile_w=256,
+        stride=128,
+        threshold=0.1,
+        output=None,
+        show=True,
+        log_level="INFO",
+    )
+"""
+
 import argparse
 import logging
-import os
-import sys
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL import Image
 
-# -----------------------------------------------------------------------------
-# Paths & imports for local modules
-# -----------------------------------------------------------------------------
-
-def add_repo_paths() -> None:
-    """
-    Add the repo's relevant directories to sys.path.
-    Assumes this file lives somewhere inside the repo.
-    """
-    script_dir = Path(__file__).resolve().parent
-    repo_root = script_dir.parents[3] if len(script_dir.parents) > 3 else script_dir.parents[1]
-
-    # Adjust these to match your layout if needed
-    model_root = repo_root / "models" / "semantic_segmentation" / "econtrail_detection"
-    utils_root = model_root
-
-    for p in (model_root, utils_root, repo_root):
-        p_str = str(p)
-        if p_str not in sys.path:
-            sys.path.append(p_str)
-
-add_repo_paths()
-
 from .CoaT_U import CoaT_U
 from .utils import Full_Scene_Probability_Mask
 from .vis import overlay_mask_on_image
 
-# -----------------------------------------------------------------------------
-# CONFIG (edit these for your setup)
-# -----------------------------------------------------------------------------
-
-# Path to model weights
-MODEL_PATH = Path(
-    "/home/irortiza/Documents/PUBLIC_GITHUB/ECONTRAIL_detection/"
-    "models/semantic_segmentation/econtrail_detection/weights/contrail/model.pth"
-)
-
-# Path to input Ash-RGB image
-IMAGE_PATH = Path(
-    "/home/irortiza/Documents/PUBLIC_GITHUB/ECONTRAIL_detection/"
-    "data/ash_rgb_goes16/2025/01/05/1030/ash_rgb_0p02deg.png"
-)
-
-# Where to save overlay; set to None to disable saving
-OUTPUT_PATH = Path(
-    "/home/irortiza/Documents/PUBLIC_GITHUB/ECONTRAIL_detection/"
-    "data/ash_rgb_goes16/2025/01/05/1030/ash_rgb_0p02deg_overlay.png"
-)
-
-# Whether to show overlay in a window
-SHOW = False
-
-# Log level
-LOG_LEVEL = "INFO"
-
-# -----------------------------------------------------------------------------
-# Utilities
-# -----------------------------------------------------------------------------
 
 def get_device() -> torch.device:
+    """
+    Select the device to run inference on.
+
+    Returns
+    -------
+    torch.device
+        ``"cuda"`` if available, otherwise ``"cpu"``.
+    """
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def load_model(model_path: Path, device: torch.device) -> torch.nn.Module:
+    """
+    Load a :class:`CoaT_U` model with pretrained weights.
+
+    Parameters
+    ----------
+    model_path : Path
+        Path to the checkpoint file.
+    device : torch.device
+        Device on which to load the model.
+
+    Returns
+    -------
+    torch.nn.Module
+        Model in evaluation mode on the specified device.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``model_path`` does not exist.
+    RuntimeError
+        If the state dictionary cannot be loaded.
+    """
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model weights not found: {model_path}")
+
     model = CoaT_U(num_classes=1)
 
     state = torch.load(model_path, map_location=device, weights_only=True)
 
-    if isinstance(state, dict) and "state_dict" in state and isinstance(state["state_dict"], dict):
+    if (
+        isinstance(state, dict)
+        and "state_dict" in state
+        and isinstance(state["state_dict"], dict)
+    ):
         state = state["state_dict"]
 
     model.load_state_dict(state)
@@ -87,6 +94,9 @@ def load_model(model_path: Path, device: torch.device) -> torch.nn.Module:
 
 
 def ensure_large_image_ok() -> None:
+    """
+    Configure PIL to support very large input images.
+    """
     Image.MAX_IMAGE_PIXELS = None
 
 
@@ -97,105 +107,263 @@ def run_inference(
     tile_h: int,
     tile_w: int,
     stride: int,
-    threshold: float
+    threshold: float,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    return Full_Scene_Probability_Mask(
+    """
+    Run tiled inference and return probability mask and input image.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Segmentation model in evaluation mode.
+    image_path : Path
+        Path to the input image.
+    device : torch.device
+        Device used for inference.
+    tile_h : int
+        Tile height in pixels.
+    tile_w : int
+        Tile width in pixels.
+    stride : int
+        Stride between tiles in pixels.
+    threshold : float
+        Probability threshold to apply.
+
+    Returns
+    -------
+    mask : numpy.ndarray
+        Predicted mask for the full image.
+    image : numpy.ndarray
+        Original image as an array.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``image_path`` does not exist.
+    """
+    if not image_path.exists():
+        raise FileNotFoundError(f"Input image not found: {image_path}")
+
+    mask, image = Full_Scene_Probability_Mask(
         model,
         str(image_path),
         device,
         tile_h,
         tile_w,
         stride,
-        threshold
+        threshold,
     )
+    return mask, image
 
 
 def save_overlay(overlay: np.ndarray, output_path: Path) -> None:
+    """
+    Save an overlay image to disk.
+
+    Parameters
+    ----------
+    overlay : numpy.ndarray
+        RGB overlay image of shape ``(H, W, 3)``.
+    output_path : Path
+        Destination file path. Parent directories are created if needed.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
     plt.figure(figsize=(30, 30))
     plt.imshow(overlay)
     plt.axis("off")
     plt.savefig(output_path, bbox_inches="tight", pad_inches=0, dpi=150)
     plt.close()
 
-# -----------------------------------------------------------------------------
-# CLI (only tiling + threshold)
-# -----------------------------------------------------------------------------
 
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description="Contrail segmentation inference & overlay "
-                    "(paths and options configured inside the script)."
-    )
-    p.add_argument("--tile-h", type=int, default=256, help="Tile height")
-    p.add_argument("--tile-w", type=int, default=256, help="Tile width")
-    p.add_argument("--stride", type=int, default=128, help="Stride for tiling")
-    p.add_argument("--threshold", type=float, default=0.1, help="Probability threshold")
-    return p.parse_args()
+def predict(
+    model_path: Path,
+    image_path: Path,
+    tile_h: int = 250,
+    tile_w: int = 500,
+    stride: int = 100,
+    threshold: float = 0.09,
+    output: Optional[Path] = None,
+    show: bool = False,
+    log_level: str = "INFO",
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Run contrail segmentation and optionally save/show the overlay.
 
-# -----------------------------------------------------------------------------
-# MAIN
-# -----------------------------------------------------------------------------
+    Parameters
+    ----------
+    model_path : Path or str
+        Path to the trained model weights.
+    image_path : Path or str
+        Path to the input image.
+    tile_h : int, optional
+        Tile height in pixels, by default ``250``.
+    tile_w : int, optional
+        Tile width in pixels, by default ``500``.
+    stride : int, optional
+        Stride between tiles in pixels, by default ``100``.
+    threshold : float, optional
+        Probability threshold, by default ``0.09``.
+    output : Path or str or None, optional
+        Output path for the overlay image. If ``None``, nothing is saved.
+    show : bool, optional
+        If ``True``, display the overlay. Default is ``False``.
+    log_level : {"DEBUG", "INFO", "WARNING", "ERROR"}, optional
+        Logging level, by default ``"INFO"``.
 
-def main() -> None:
-    args = parse_args()
+    Returns
+    -------
+    overlay : numpy.ndarray
+        RGB overlay image.
+    mask : numpy.ndarray
+        Predicted mask.
+    image : numpy.ndarray
+        Original input image.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``model_path`` or ``image_path`` do not exist.
+    RuntimeError
+        If model loading fails.
+    """
+    model_path = Path(model_path)
+    image_path = Path(image_path)
 
     logging.basicConfig(
-        level=getattr(logging, LOG_LEVEL),
+        level=getattr(logging, log_level),
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
 
     ensure_large_image_ok()
-
     device = get_device()
+
     logging.info("Using device: %s", device)
+    logging.info("Loading model from %s", model_path)
 
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"Model weights not found: {MODEL_PATH}")
-
-    if not IMAGE_PATH.exists():
-        raise FileNotFoundError(f"Input image not found: {IMAGE_PATH}")
-
-    logging.info("Loading model from %s", MODEL_PATH)
-    model = load_model(MODEL_PATH, device)
+    model = load_model(model_path, device)
 
     logging.info(
         "Running inference: tile_h=%d tile_w=%d stride=%d threshold=%.3f",
-        args.tile_h, args.tile_w, args.stride, args.threshold
+        tile_h,
+        tile_w,
+        stride,
+        threshold,
     )
 
     mask, image = run_inference(
         model=model,
-        image_path=IMAGE_PATH,
+        image_path=image_path,
         device=device,
-        tile_h=args.tile_h,
-        tile_w=args.tile_w,
-        stride=args.stride,
-        threshold=args.threshold
+        tile_h=tile_h,
+        tile_w=tile_w,
+        stride=stride,
+        threshold=threshold,
     )
 
     logging.info("Creating overlay")
-    overlayed_image = overlay_mask_on_image(image, mask)
+    overlay = overlay_mask_on_image(image, mask)
 
-    if OUTPUT_PATH is not None:
-        save_overlay(overlayed_image, OUTPUT_PATH)
-        logging.info("Saved overlay to %s", OUTPUT_PATH)
+    if output is not None:
+        output_path = Path(output)
+        save_overlay(overlay, output_path)
+        logging.info("Saved overlay to %s", output_path)
 
-    if SHOW:
+    if show:
         plt.figure(figsize=(12, 12))
-        plt.imshow(overlayed_image)
+        plt.imshow(overlay)
         plt.title("Overlay")
         plt.axis("off")
         plt.show()
 
+    return overlay, mask, image
+
+
+def parse_args() -> argparse.Namespace:
+    """
+    Parse command-line arguments.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed command-line arguments.
+    """
+    parser = argparse.ArgumentParser(
+        description="Contrail segmentation inference and overlay generation."
+    )
+    parser.add_argument(
+        "--model-path",
+        type=Path,
+        required=True,
+        help="Path to the trained weights file.",
+    )
+    parser.add_argument(
+        "--image",
+        type=Path,
+        required=True,
+        help="Path to the input image.",
+    )
+    parser.add_argument(
+        "--tile-h",
+        type=int,
+        default=250,
+        help="Tile height in pixels.",
+    )
+    parser.add_argument(
+        "--tile-w",
+        type=int,
+        default=500,
+        help="Tile width in pixels.",
+    )
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=100,
+        help="Stride between tiles in pixels.",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.09,
+        help="Probability threshold.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output path for the overlay image (PNG recommended).",
+    )
+    parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Display the overlay image.",
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level.",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    """
+    Command-line entry point.
+    """
+    args = parse_args()
+    predict(
+        model_path=args.model_path,
+        image_path=args.image,
+        tile_h=args.tile_h,
+        tile_w=args.tile_w,
+        stride=args.stride,
+        threshold=args.threshold,
+        output=args.output,
+        show=args.show,
+        log_level=args.log_level,
+    )
+
 
 if __name__ == "__main__":
     main()
-
-
-""" python -m models.semantic_segmentation.econtrail_detection.predict \
-  --tile-h 256 \
-  --tile-w 256 \
-  --stride 128 \
-  --threshold 0.1
- """
