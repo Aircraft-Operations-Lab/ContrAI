@@ -1,8 +1,3 @@
-<img src="images/logo.png"
-     alt="ContrAI logo"
-     style="float:right; margin:0 0 10px 20px;"
-     width="190" />
-<div style="clear:right; height:1px;"></div>
 
 # ContrAI 🛰️
 
