@@ -5,21 +5,18 @@ Flexible Combined Imager (FCI) Level 1c products from the EUMETSAT
 Data Store using the EUMDAC client.
 
 This module is library-only: no side effects, no printing.
-
-Notes
------
-The current implementation expects an ``eumdac`` version whose
-product objects expose a :meth:`download` method. If your environment
-uses a newer, incompatible ``eumdac`` API, a :class:`RuntimeError`
-will be raised with guidance.
 """
 
 from __future__ import annotations
 
+import io
 import os
+import contextlib
+from pathlib import Path
 from datetime import datetime
-from typing import Iterable, List, Optional, Sequence, Union
+from typing import Any, Iterable, List, Optional, Sequence
 
+import requests  # for URL fallback on EUMDAC 3.x
 import eumdac  # type: ignore[import]
 
 
@@ -73,16 +70,12 @@ def find_fci_l1c_products(
     if start >= end:
         raise ValueError("start must be earlier than end")
 
-    if bbox is not None:
-        if len(bbox) != 4:
-            raise ValueError("bbox must be [west, south, east, north]")
+    if bbox is not None and len(bbox) != 4:
+        raise ValueError("bbox must be [west, south, east, north]")
 
     collection = datastore.get_collection(collection_id)
 
-    search_kwargs = {
-        "dtstart": start,
-        "dtend": end,
-    }
+    search_kwargs = {"dtstart": start, "dtend": end}
     if bbox is not None:
         search_kwargs["bbox"] = bbox
 
@@ -100,58 +93,203 @@ def find_fci_l1c_products(
     return products
 
 
-def _download_product(
-    product: object,
-    out_dir: str,
-    entries: Optional[Iterable[str]] = None,
-) -> List[str]:
+# -------------------------------
+# Download helpers (2.x and 3.x)
+# -------------------------------
+
+def _iter_eumdac_entries(product: Any) -> Iterable[Any]:
     """
-    Internal helper to download a single product using the installed eumdac API.
-
-    Parameters
-    ----------
-    product : object
-        Product-like object returned by ``collection.search``.
-    out_dir : str
-        Output directory for downloaded data.
-    entries : iterable of str, optional
-        Optional subset of entries/files to download.
-
-    Returns
-    -------
-    list of str
-        Paths to downloaded files.
-
-    Raises
-    ------
-    RuntimeError
-        If the installed ``eumdac`` version does not provide a compatible
-        ``download`` API on the product object.
+    Yield entry-like objects for a product on EUMDAC 3.x.
+    Tries common attributes: 'entries', 'assets', 'items'.
+    Falls back to yielding the product itself if none exist.
     """
-    # EUMDAC classic API: Dataset.download(...)
+    for attr in ("entries", "assets", "items"):
+        if hasattr(product, attr):
+            coll = getattr(product, attr)
+            try:
+                for e in coll:
+                    yield e
+            except TypeError:
+                # Not iterable; ignore and keep searching
+                pass
+            return
+    # Fallback: treat the product itself as a single entry
+    yield product
+
+
+def _guess_entry_name(entry: Any) -> str:
+    """Pick a reasonable filename for an entry."""
+    if hasattr(entry, "filename") and getattr(entry, "filename"):
+        return str(getattr(entry, "filename"))
+    if hasattr(entry, "name") and getattr(entry, "name"):
+        return str(getattr(entry, "name"))
+    if hasattr(entry, "id") and getattr(entry, "id"):
+        return str(getattr(entry, "id"))
+    if isinstance(entry, dict):
+        for k in ("filename", "name", "id"):
+            v = entry.get(k)
+            if v:
+                return str(v)
+    return "part"
+
+
+def _extract_download_url(entry: Any) -> Optional[str]:
+    """
+    Extract a (pre-signed) HTTPS URL from an entry object that lacks
+    .download()/.open()/.read(). Supports several common shapes.
+    """
+    # Direct attributes
+    for attr in ("href", "url", "download_url", "downloadUri", "download_url_signed"):
+        val = getattr(entry, attr, None)
+        if isinstance(val, str) and val.startswith(("http://", "https://")):
+            return val
+
+    # location.href pattern
+    loc = getattr(entry, "location", None)
+    if loc is not None:
+        href = getattr(loc, "href", None)
+        if isinstance(href, str) and href.startswith(("http://", "https://")):
+            return href
+
+    # links[...].href, rel in (enclosure/self/download)
+    links = getattr(entry, "links", None) or (entry.get("links") if isinstance(entry, dict) else None)
+    if links:
+        for link in links:
+            href = getattr(link, "href", None) or (link.get("href") if isinstance(link, dict) else None)
+            rel = getattr(link, "rel", None) or (link.get("rel") if isinstance(link, dict) else None)
+            if href and href.startswith(("http://", "https://")) and (rel in (None, "enclosure", "self", "download")):
+                return href
+
+    # dict-like direct URL fields
+    if isinstance(entry, dict):
+        for key in ("href", "url", "download", "downloadUri"):
+            val = entry.get(key)
+            if isinstance(val, str) and val.startswith(("http://", "https://")):
+                return val
+
+    return None
+
+
+def _download_streamlike(obj: Any, target_path: Path) -> None:
+    """
+    Write bytes from a stream/response/bytes-like object into target_path.
+    Supports .iter_content(), .read(), or raw bytes/bytearray.
+    """
+    with open(target_path, "wb") as fh:
+        if hasattr(obj, "iter_content"):
+            for chunk in obj.iter_content(chunk_size=8192):
+                if chunk:
+                    fh.write(chunk)
+            return
+        if hasattr(obj, "read"):
+            fh.write(obj.read())
+            return
+        if isinstance(obj, (bytes, bytearray)):
+            fh.write(obj)
+            return
+        content = getattr(obj, "content", None)
+        if content is not None:
+            fh.write(content)
+            return
+        raise RuntimeError("Unsupported stream object: cannot read bytes.")
+
+
+def _entry_matches(entry: Any, allowed: Optional[Iterable[str]]) -> bool:
+    """
+    If 'allowed' is provided, only download entries whose id/name/filename
+    matches one of the provided strings (exact match).
+    """
+    if not allowed:
+        return True
+    name = _guess_entry_name(entry)
+    ids = {
+        name,
+        str(getattr(entry, "id", "")),
+        str(getattr(entry, "name", "")),
+        str(getattr(entry, "filename", "")),
+    }
+    return any(a in ids for a in allowed)
+
+
+def _download_product(product: Any, out_dir: str, entries: Optional[Iterable[str]] = None) -> List[str]:
+    """
+    Download a product (EUMDAC v2) or its entries/chunks (EUMDAC 3).
+    If 'entries' is provided, it's a whitelist of entry IDs/names to download.
+    Returns list of file paths.
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    # --- EUMDAC v2.x fast path: product has .download(...)
     if hasattr(product, "download"):
-        kwargs = {}
-        if entries is not None:
-            kwargs["entries"] = list(entries)
-        result = product.download(out_dir, **kwargs)  # type: ignore[call-arg]
-
-        # Normalise to list of paths
-        if isinstance(result, str):
-            return [result]
-        if isinstance(result, (list, tuple, set)):
-            return [str(p) for p in result]
-
-        # Some implementations may return generators / other iterables
         try:
-            return [str(p) for p in result]  # type: ignore[arg-type]
+            p = product.download(out)
+            return [str(p)] if p else []
         except TypeError:
-            return []
+            p = product.download(path=out)
+            return [str(p)] if p else []
 
-    raise RuntimeError(
-        "Incompatible eumdac API: product object has no 'download' method. "
-        "Install a compatible version, e.g. 'eumdac<3.0.0', or update "
-        "contrai.data.mtg_fci to match your eumdac version."
-    )
+    # --- EUMDAC v3.x: iterate entry-like objects and fetch each
+    downloaded: List[str] = []
+    for entry in _iter_eumdac_entries(product):
+        if not _entry_matches(entry, entries):
+            continue
+
+        name = _guess_entry_name(entry)
+        target = out / name
+        tmp_target = target.with_suffix(target.suffix + ".part")
+
+        # Preferred: entry.download(...)
+        if hasattr(entry, "download"):
+            try:
+                p = entry.download(out)
+                downloaded.append(str(p) if p else str(out / name))
+                continue
+            except TypeError:
+                p = entry.download(path=target)
+                downloaded.append(str(p) if p else str(target))
+                continue
+
+        # Fallbacks: entry.open() / entry.read()
+        if hasattr(entry, "open"):
+            with entry.open() as stream:
+                _download_streamlike(stream, tmp_target)
+            os.replace(tmp_target, target)
+            downloaded.append(str(target))
+            continue
+
+        if hasattr(entry, "read"):
+            data = entry.read()
+            _download_streamlike(io.BytesIO(data), tmp_target)
+            os.replace(tmp_target, target)
+            downloaded.append(str(target))
+            continue
+
+        # URL-based fallback (typical for some 3.x builds)
+        url = _extract_download_url(entry)
+        if url:
+            with contextlib.ExitStack() as stack:
+                resp = stack.enter_context(requests.get(url, stream=True, timeout=120))
+                resp.raise_for_status()
+                with open(tmp_target, "wb") as fh:
+                    for chunk in resp.iter_content(chunk_size=8192):
+                        if chunk:
+                            fh.write(chunk)
+            os.replace(tmp_target, target)
+            downloaded.append(str(target))
+            continue
+
+        # Last fallback: raw content attribute
+        content = getattr(entry, "content", None) or (entry.get("content") if isinstance(entry, dict) else None)
+        if isinstance(content, (bytes, bytearray)):
+            _download_streamlike(content, tmp_target)
+            os.replace(tmp_target, target)
+            downloaded.append(str(target))
+            continue
+
+        raise RuntimeError("Unsupported EUMDAC v3 entry: no download/open/read/url/content.")
+
+    return downloaded
 
 
 def download_fci_l1c_products(
@@ -192,14 +330,6 @@ def download_fci_l1c_products(
     -------
     list of str
         Paths of downloaded files.
-
-    Raises
-    ------
-    ValueError
-        If search parameters are invalid.
-    RuntimeError
-        If the installed ``eumdac`` version is incompatible with the
-        expected download API.
     """
     os.makedirs(out_dir, exist_ok=True)
 
