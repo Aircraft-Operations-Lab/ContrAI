@@ -27,10 +27,10 @@ pip install -U contrai
 
 Explore how to use this package with ready-to-run notebooks:
 
-- 📘 **[Contrail Detection Example](notebooks/contrail_detection.ipynb)**  
+- 📘 **[Contrail Detection Example](notebooks/detect_contrails.ipynb)**  
   Demonstrates how to load satellite imagery and run the contrail detection workflow end-to-end using this package.
 
-- 📗 **[Polygon Dataset Visualization](notebooks/polygon_visualization.ipynb)**  
+- 📗 **[Polygon Dataset Visualization](notebooks/polygon_based_opencontrails.ipynb)**  
   Shows how to visualize and inspect the polygon-based contrail dataset, including label overlays and basic statistics.
 
 ---
@@ -57,9 +57,9 @@ This project is licensed under the [Apache 2.0 License](./LICENSE).
 We welcome feedback, discussions, and contributions!  
 If you have suggestions, find a bug, or want to collaborate, feel free to open an issue or start a discussion.
 
-[![Discussions](https://img.shields.io/badge/discussions-join-blue)](https://github.com/<USER>/<REPO>/discussions)  
-[![Open Issues](https://img.shields.io/badge/issues-view-yellow)](https://github.com/<USER>/<REPO>/issues)  
-[![Pull Requests](https://img.shields.io/badge/pull%20requests-view-orange)](https://github.com/<USER>/<REPO>/pulls)
+[![Discussions](https://img.shields.io/badge/discussions-join-blue)](https://github.com/irortiza/ContrAI/discussions)  
+[![Open Issues](https://img.shields.io/badge/issues-view-yellow)](https://github.com/irortiza/ContrAI/issues)  
+[![Pull Requests](https://img.shields.io/badge/pull%20requests-view-orange)](https://github.com/irortiza/ContrAI/pulls)
 
 ---
 
