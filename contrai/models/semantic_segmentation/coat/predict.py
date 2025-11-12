@@ -1,8 +1,6 @@
 """
 Prediction utilities and CLI for contrail segmentation.
 
-Provides a library-style :func:`predict` function for use in Python code
-and notebooks, and a command-line interface when executed as a module.
 
 Example
 -------
