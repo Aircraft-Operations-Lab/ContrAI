@@ -11,7 +11,7 @@ import os
 import re
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Tuple, Iterable, List
-
+from concurrent.futures import ThreadPoolExecutor, as_completed 
 import s3fs
 import numpy as np
 import xarray as xr
@@ -152,7 +152,6 @@ def _candidate_hour_prefixes(
 
     return prefixes
 
-
 def find_ash_keys_for_datetime(
     year: int,
     month: int,
@@ -167,18 +166,10 @@ def find_ash_keys_for_datetime(
     """
     Locate ABI-L1b-RadF S3 object keys closest in time to the target.
 
-    This implementation minimizes S3 listing overhead by:
-    - Restricting to hour directories that can contain scans within
-      `max_time_diff` of the requested time (if provided).
-    - Filtering files in Python only within those prefixes.
-
-    Returns
-    -------
-    (keys, target_dt)
-        keys : dict
-            Mapping {channel: s3_key}
-        target_dt : datetime
-            Target datetime used for matching.
+    Optimized:
+      - Only probe hour prefixes that could contain the target time.
+      - Per-channel glob to avoid large directory listings.
+      - Concurrency for prefix/channel discovery.
     """
     target = target_datetime(year, month, day, hhmm)
     fs = _build_s3_filesystem()
@@ -198,21 +189,53 @@ def find_ash_keys_for_datetime(
             f"(no time window limit), base prefix count: {len(prefixes)}"
         )
 
-    # Collect candidate files from the selected prefixes
-    all_files: List[str] = []
+    # Per-channel candidate lists using glob (fast server-side filtering)
+    ch_to_candidates: Dict[str, List[str]] = {ch: [] for ch in channels}
 
-    for prefix in prefixes:
-        try:
-            files = fs.ls(prefix)
-        except FileNotFoundError:
-            continue
-        all_files.extend(files)
+    def _glob_one(prefix: str, ch: str) -> List[str]:
+        """
+        Try strict pattern first (correct for GOES-16): OR_<product>-M6C{ch}_*.nc
+        Fall back to *<product>-M6C{ch}_*.nc in case of any unforeseen prefixing.
+        """
+        patterns = [
+            f"{prefix}OR_{product}-M6C{ch}_*.nc",   # canonical
+            f"{prefix}*{product}-M6C{ch}_*.nc",     # permissive fallback
+        ]
+        out: List[str] = []
+        for pat in patterns:
+            try:
+                out.extend(fs.glob(pat))
+            except FileNotFoundError:
+                continue
+        return out
 
-    # Fallback for max_time_diff=None: if user passed a day prefix only
-    # (without specific hours), ensure we also handle that case.
-    if max_time_diff is None and len(prefixes) == 1 and not all_files:
-        # Original behavior: list hours under day prefix, then list each hour.
-        day_prefix = prefixes[0]
+    # Concurrency across (prefix, channel)
+    max_workers = min(64, max(1, len(prefixes) * len(tuple(channels))))
+    total_matches = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = {}
+        for prefix in prefixes:
+            # ensure trailing slash for safety
+            if not prefix.endswith("/"):
+                prefix = prefix + "/"
+            for ch in channels:
+                futures[ex.submit(_glob_one, prefix, ch)] = ch
+
+        for fut in as_completed(futures):
+            ch = futures[fut]
+            try:
+                res = fut.result()
+                ch_to_candidates[ch].extend(res)
+                total_matches += len(res)
+            except Exception as e:
+                _log(f"Warning: glob failed for band {ch}: {e}")
+
+    _log(f"Discovered {total_matches} candidate files across requested prefixes.")
+
+    # Fallback for max_time_diff=None (whole-day search) if nothing came back
+    if max_time_diff is None and all(len(v) == 0 for v in ch_to_candidates.values()):
+        _log("Fallback: day-wide listing due to empty glob results")
+        day_prefix = prefixes[0]  # .../YYYY/DOY/
         try:
             hour_dirs = fs.ls(day_prefix)
         except FileNotFoundError as e:
@@ -220,31 +243,29 @@ def find_ash_keys_for_datetime(
                 f"No data for {year:04d}-{month:02d}-{day:02d} "
                 f"under s3://{bucket}/{product}/"
             ) from e
-        for hour_dir in hour_dirs:
-            try:
-                files = fs.ls(hour_dir)
-            except FileNotFoundError:
-                continue
-            all_files.extend(files)
 
-    if not all_files:
-        raise FileNotFoundError(
-            f"No candidate files found near {target.isoformat()}Z "
-            f"under s3://{bucket}/{product}/"
-        )
+        hour_dirs = [p if p.endswith("/") else p + "/" for p in hour_dirs]
+        with ThreadPoolExecutor(max_workers=32) as ex:
+            futures = {}
+            for hour_dir in hour_dirs:
+                for ch in channels:
+                    futures[ex.submit(_glob_one, hour_dir, ch)] = ch
+            for fut in as_completed(futures):
+                ch = futures[fut]
+                try:
+                    ch_to_candidates[ch].extend(fut.result())
+                except Exception as e:
+                    _log(f"Warning: day-glob failed for band {ch}: {e}")
 
-    _log(f"Collected {len(all_files)} candidate files from S3")
-
+    # Select best file per channel by time proximity
     keys: Dict[str, str] = {}
-
     for ch in channels:
-        pattern = f"{product}-M6C{ch}_"
-        ch_files = [f for f in all_files if pattern in f and f.endswith(".nc")]
-
+        ch_files = ch_to_candidates.get(ch, [])
         if not ch_files:
-            raise FileNotFoundError(
-                f"No files for band {ch} near {target.isoformat()}Z"
-            )
+            # Helpful hint for debugging if this ever happens again
+            _log(f"No matches for pattern OR_{product}-M6C{ch}_*.nc "
+                 f"around {target.isoformat()}Z in {len(prefixes)} prefixes.")
+            raise FileNotFoundError(f"No files for band {ch} near {target.isoformat()}Z")
 
         best_file = None
         best_time = None
@@ -283,6 +304,7 @@ def find_ash_keys_for_datetime(
         )
 
     return keys, target
+
 
 
 # -----------------------------------------------------------------------------

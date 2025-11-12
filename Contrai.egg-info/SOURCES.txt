@@ -11,8 +11,6 @@ contrai/__init__.py
 contrai/data/__init__.py
 contrai/data/goes16.py
 contrai/data/mtg_fci.py
-contrai/data/download/__init__.py
-contrai/data/download/download_goes16_l1b.py
 contrai/models/__init__.py
 contrai/models/semantic_segmentation/__init__.py
 contrai/models/semantic_segmentation/coat/CoaT_U.py
