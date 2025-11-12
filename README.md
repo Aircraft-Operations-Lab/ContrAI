@@ -56,8 +56,7 @@ This project is licensed under the [Apache 2.0 License](./LICENSE).
 
 We welcome feedback, discussions, and contributions!  
 If you have suggestions, find a bug, or want to collaborate, feel free to open an issue or start a discussion.
-
-[![Discussions](https://img.shields.io/badge/discussions-join-blue)](https://github.com/irortiza/ContrAI/discussions)  
+ 
 [![Open Issues](https://img.shields.io/badge/issues-view-yellow)](https://github.com/irortiza/ContrAI/issues)  
 [![Pull Requests](https://img.shields.io/badge/pull%20requests-view-orange)](https://github.com/irortiza/ContrAI/pulls)
 
