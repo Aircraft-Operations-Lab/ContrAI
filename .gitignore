@@ -1,1 +1,2 @@
-/home/irortiza/Documents/PUBLIC_GITHUB/coat/models/semantic_segmentation/coat/weights
+**/weights/
+*.egg-info/
