@@ -1,7 +1,16 @@
-# ContrAI 🛰️  
-*A Python library for contrail detection and analysis using AI.*
+<img src="images/logo.png"
+     alt="ContrAI logo"
+     style="float:right; margin:0 0 10px 20px;"
+     width="190" />
+<div style="clear:right; height:1px;"></div>
 
-![ContrAI overlay](outputs/contrail_overlay.png)
+# ContrAI 🛰️
+
+*A Python library for contrail detection and analysis using AI models.*
+
+<br clear="right"/>
+
+![ContrAI overlay](images/contrail_overlay.png)
 
 ---
 
@@ -53,3 +62,7 @@ You can install ContrAI using pip:
 
 ```bash
 pip install contrai
+
+```
+
+![ContrAI logo](images/logo.png)
