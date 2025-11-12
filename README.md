@@ -1,63 +1,74 @@
-
 # ContrAI 🛰️
 
 *A Python library for contrail detection and analysis using AI models.*
 
-<br clear="right"/>
 
-![ContrAI overlay](images/contrail_overlay.png)
-
----
-
-## 📦 Version
-[![PyPI Version](https://img.shields.io/pypi/v/ContrAI)](https://pypi.org/project/ContrAI/)
-[![Anaconda](https://anaconda.org/conda-forge/contrai/badges/version.svg)](https://anaconda.org/conda-forge/contrai)
-![Python Versions](https://img.shields.io/badge/python-3.11|3.12|3.13|3.14-blue)
-
----
-
-## 📚 Citation
-If you use this package in your research, please cite:
-
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17437750.svg)](https://doi.org/10.5281/zenodo.17437750)
-
----
-
-## ✅ Tests & Quality
-![Unit Tests](https://img.shields.io/badge/tests-passing-brightgreen)
-![Docs](https://img.shields.io/badge/docs-passing-brightgreen)
-![Release](https://img.shields.io/badge/release-passing-brightgreen)
-![OpenSSF Score](https://img.shields.io/badge/openssf-7.1-yellowgreen)
-
----
-
-## ⚖️ License
-This project is licensed under the [Apache 2.0 License](LICENSE).
-
----
-
-## 👥 Community
-[![Discussions](https://img.shields.io/badge/discussions-30-blue)]()
-[![Open Issues](https://img.shields.io/badge/issues-18-yellow)]()
-[![Pull Requests](https://img.shields.io/badge/pull%20requests-5-orange)]()
+![ContrAI overlay example](images/example_overlay.png)
 
 ---
 
 ## 🧠 Features
 - Automated contrail detection using deep learning  
 - Image preprocessing and overlay visualization  
-- Model training, evaluation, and export utilities  
-- Easy-to-use CLI and Python API  
+- Easy-to-use Python API  
 
 ---
 
 ## 🚀 Installation
 
-You can install ContrAI using pip:
+Install the latest released version from PyPI:
 
 ```bash
-pip install contrai
-
+pip install -U contrai
 ```
 
+---
+## 🧠 Jupyter Notebook Examples
+
+Explore how to use this package with ready-to-run notebooks:
+
+- 📘 **[Contrail Detection Example](notebooks/contrail_detection.ipynb)**  
+  Demonstrates how to load satellite imagery and run the contrail detection workflow end-to-end using this package.
+
+- 📗 **[Polygon Dataset Visualization](notebooks/polygon_visualization.ipynb)**  
+  Shows how to visualize and inspect the polygon-based contrail dataset, including label overlays and basic statistics.
+
+---
+
+## 📚 Citation
+
+If you use this package in your research, please cite:
+
+
+[![DOI](https://img.shields.io/badge/DOI-10.1109%2FXYZ.2025.11230580-blue)](https://doi.org/10.1109/TGRS.2025.3629628)
+
+[![IEEE Xplore](https://img.shields.io/badge/View%20on-IEEE%20Xplore-blue)](https://ieeexplore.ieee.org/document/11230580)
+
+---
+
+## ⚖️ License
+
+This project is licensed under the [Apache 2.0 License](./LICENSE).
+
+---
+
+## 👥 Community
+
+We welcome feedback, discussions, and contributions!  
+If you have suggestions, find a bug, or want to collaborate, feel free to open an issue or start a discussion.
+
+[![Discussions](https://img.shields.io/badge/discussions-join-blue)](https://github.com/<USER>/<REPO>/discussions)  
+[![Open Issues](https://img.shields.io/badge/issues-view-yellow)](https://github.com/<USER>/<REPO>/issues)  
+[![Pull Requests](https://img.shields.io/badge/pull%20requests-view-orange)](https://github.com/<USER>/<REPO>/pulls)
+
+---
+
+**Note: This is the first release and will be updated soon with additional features for satellite contrail analysis and improvements to current capabilities.**
+
+---
+
 ![ContrAI logo](images/logo.png)
+
+<p align="center">
+  <sub> 2025 ContrAI. </sub>
+</p>
