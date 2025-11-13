@@ -15,6 +15,12 @@
 ---
 
 ## 🚀 Installation
+Create a conda environment:
+
+```bash
+conda create -n contrai_env python=3.10
+conda activate contrai_env
+```
 
 Install the latest released version from PyPI:
 
@@ -38,7 +44,6 @@ Explore how to use this package with ready-to-run notebooks:
 ## 📚 Citation
 
 If you use this package in your research, please cite:
-
 
 [![DOI](https://img.shields.io/badge/DOI-10.1109%2FXYZ.2025.11230580-blue)](https://doi.org/10.1109/TGRS.2025.3629628)
 
@@ -66,7 +71,7 @@ If you have suggestions, find a bug, or want to collaborate, feel free to open a
 
 ---
 
-![ContrAI logo](images/logo.png)
+![ContrAI logo](images/logo_contrai.png)
 
 <p align="center">
   <sub> 2025 ContrAI. </sub>

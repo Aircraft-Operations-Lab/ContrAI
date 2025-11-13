@@ -4,10 +4,15 @@ import torch.nn.functional as F
 from collections import OrderedDict
 from .coat import CoaT,coat_lite_mini,coat_small,coat_lite_medium
 from pathlib import Path
+from .weight_loader import ensure_local_weight
 
-CURRENT_DIR = Path(__file__).resolve().parent
+pretrained_path = ensure_local_weight("pretrained")
+
+
+""" CURRENT_DIR = Path(__file__).resolve().parent
+print(CURRENT_DIR)
 pretrained_path = CURRENT_DIR / "weights" / "pretrained" / "coat_small_7479cf9b_checkpoint.pth"
-
+ """
 
 class FPN(nn.Module):
     def __init__(self, input_channels:list, output_channels:list):
