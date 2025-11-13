@@ -18,8 +18,8 @@ from pyresample import geometry, kd_tree
 # Configuration
 # -----------------------------------------------------------------------------
 DEFAULT_TRUE_COLOR_CHANNELS = ("01", "02", "03")
-DEFAULT_TRUE_L1B_ROOT = "goes_l1b"
-DEFAULT_TRUE_RGB_ROOT = "goes16_true_rgb"
+DEFAULT_TRUE_L1B_ROOT = "images/goes_l1b"
+DEFAULT_TRUE_RGB_ROOT = "images/goes16_true_rgb"
 
 DEFAULT_BUCKET = "noaa-goes16"
 DEFAULT_PRODUCT = "ABI-L1b-RadF"
@@ -390,6 +390,8 @@ def build_ash_rgb_from_paths(
         np.nan_to_num(Br)
     ])
     return np.clip(rgb, 0, 1)
+
+
 def _downsample_to_match(high_res: np.ndarray, low_res: np.ndarray) -> np.ndarray:
     """
     Downsample high_res to the shape of low_res by block-averaging.
