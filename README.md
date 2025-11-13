@@ -71,7 +71,7 @@ If you have suggestions, find a bug, or want to collaborate, feel free to open a
 
 ---
 
-![ContrAI logo](images/logo_contrai.png)
+![ContrAI logo](images/contrai_logo.png)
 
 <p align="center">
   <sub> 2025 ContrAI. </sub>
