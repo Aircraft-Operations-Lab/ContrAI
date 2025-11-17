@@ -33,7 +33,7 @@ pip install -U contrai
 
 Explore how to use this package with ready-to-run notebooks:
 - 📕 **[GOES-16 Data Download Example](notebooks/goes16_download.ipynb)**  
-  Explores accessing and downloading GOES-16 ABI satellite imagery, and generating both true-color RGB and false-color ash RGB composites for improved visual interpretation.
+  Explores accessing and downloading GOES-16 ABI satellite imagery.
 
 - 📘 **[Contrail Detection Example](notebooks/detect_contrails.ipynb)**  
   Demonstrates how to run a contrail detection model on a .png ash RGB image file.
