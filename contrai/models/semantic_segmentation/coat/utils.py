@@ -6,8 +6,8 @@ import torch
 import cv2
 from tqdm import tqdm
 import sys
-
-
+from pathlib import Path
+import xarray as xr
 def predict_single_tile(model, image, device, tile_size: int, th: float):
     """
     Predict a segmentation mask for a single image tile.
@@ -214,7 +214,30 @@ def Full_Scene_Probability_Mask(model: torch.nn.Module, image_path: str, device:
     :return: Tuple of (mask/probability map, original image).
     :rtype: tuple[np.ndarray, PIL.Image.Image]
     """
-    image = Image.open(image_path).convert("RGB")
+    image_path = Path(image_path)
+
+    if image_path.suffix == ".nc":
+        # NetCDF Ash RGB case: read bands and build an RGB image
+        with xr.open_dataset(image_path) as ds:
+            for var_name in ("ash_red", "ash_green", "ash_blue"):
+                if var_name not in ds:
+                    raise ValueError(
+                        f"Expected variable '{var_name}' in {image_path}, "
+                        "but it was not found."
+                    )
+
+            ash_red = ds["ash_red"].values
+            ash_green = ds["ash_green"].values
+            ash_blue = ds["ash_blue"].values
+
+
+        # Stack into RGB (H, W, 3)
+        rgb = np.stack([ash_red, ash_green, ash_blue], axis=-1)
+        image = Image.fromarray(rgb, mode="RGB")
+
+    else:
+        # Regular image file
+        image = Image.open(image_path).convert("RGB")
 
     prob = Sliding_Window(
         model, image, device,

@@ -1,31 +1,15 @@
 """
 Prediction utilities and CLI for contrail segmentation.
 
-
-Example
--------
-From Python::
-
-    from models.semantic_segmentation.coat.predict import predict
-
-    overlay, mask, image = predict(
-        model_path="path/to/model.pth",
-        image_path="path/to/image.png",
-        tile_h=256,
-        tile_w=256,
-        stride=128,
-        threshold=0.1,
-        output=None,
-        show=True,
-        log_level="INFO",
-    )
 """
 
 import argparse
 import logging
 from pathlib import Path
 from typing import Optional, Tuple
-
+import cv2
+import geojson
+from typing import Literal, Union, Dict, Any
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -172,58 +156,263 @@ def save_overlay(overlay: np.ndarray, output_path: Path) -> None:
     plt.axis("off")
     plt.savefig(output_path, bbox_inches="tight", pad_inches=0, dpi=150)
     plt.close()
+from typing import List, Tuple, Dict, Any, Optional
+
+import cv2
+import geojson
+import numpy as np
+
+
+def _find_contours(mask: np.ndarray) -> List[List[List[int]]]:
+    """
+    Find contours in a binary mask and return them as lists of [x, y] coordinates.
+
+    Parameters
+    ----------
+    mask : np.ndarray
+        2D uint8 image where non-zero pixels belong to the foreground.
+
+    Returns
+    -------
+    list of list of list of int
+        A list of contours, each contour being a list of [x, y] pixel coordinates.
+    """
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    contours_list: List[List[List[int]]] = []
+    for contour in contours:
+        contour_coords = contour.squeeze().tolist()
+        # Handle case where contour has a single point
+        if isinstance(contour_coords[0], int):
+            contour_coords = [contour_coords]
+        contours_list.append(contour_coords)
+
+    return contours_list
+
+
+from typing import List, Tuple, Optional
+import numpy as np
+
+
+def _coords_to_latlon(
+    contours: List[List[List[int]]],
+    coords: Optional[Tuple[int, int, int, int]],
+    lat: np.ndarray,
+    lon: np.ndarray,
+) -> List[List[Tuple[float, float]]]:
+    """
+    Map pixel coordinates to (lon, lat) using provided grids.
+
+    Parameters
+    ----------
+    contours : list of list of list of int
+        Contours in pixel coordinates [[x, y], ...].
+        OpenCV gives (x, y) = (col, row).
+    coords : tuple of int, optional
+        (x1, x2, y1, y2) indices if the mask is a sub-window of the full
+        lat/lon grid. If None, pixel indices are taken as absolute.
+    lat : np.ndarray
+        Latitude grid (2D or 1D).
+    lon : np.ndarray
+        Longitude grid (2D or 1D).
+
+    Returns
+    -------
+    list of list of tuple of float
+        Contours in (lon, lat) coordinates.
+    """
+    georef_contours: List[List[Tuple[float, float]]] = []
+
+    # Determine how to index lat/lon
+    lat_ndim = lat.ndim
+    lon_ndim = lon.ndim
+
+    if not (lat_ndim in (1, 2) and lon_ndim in (1, 2)):
+        raise ValueError(
+            f"lat and lon must be 1D or 2D arrays, got lat.ndim={lat_ndim}, "
+            f"lon.ndim={lon_ndim}"
+        )
+
+    for contour in contours:
+        georef_contour: List[Tuple[float, float]] = []
+        for x_pix, y_pix in contour:
+            # x_pix = column, y_pix = row
+            if coords is not None:
+                x1, _, _, y2 = coords
+                x = x1 + x_pix
+                y = y2 + y_pix
+            else:
+                x = x_pix
+                y = y_pix
+
+            # Now map to lat/lon
+            if lat_ndim == 2 and lon_ndim == 2:
+                # Full 2D geolocation grid
+                lon_val = float(lon[y, x])
+                lat_val = float(lat[y, x])
+            elif lat_ndim == 1 and lon_ndim == 1:
+                # 1D lat[y], lon[x]
+                lon_val = float(lon[x])
+                lat_val = float(lat[y])
+            else:
+                # Mixed dimensionality is weird; better to fail loudly
+                raise ValueError(
+                    "lat and lon must both be 1D or both be 2D. "
+                    f"Got lat.ndim={lat_ndim}, lon.ndim={lon_ndim}"
+                )
+
+            georef_contour.append((lon_val, lat_val))
+        georef_contours.append(georef_contour)
+
+    return georef_contours
+
+
+
+def _contours_to_geojson(
+    contours_latlon: List[List[Tuple[float, float]]],
+    feature_id: str = "contrail_polygon",
+) -> Dict[str, Any]:
+    """
+    Build a GeoJSON FeatureCollection from a list of lon/lat contours.
+
+    Parameters
+    ----------
+    contours_latlon : list of list of tuple of float
+        Each element is a contour in (lon, lat) coordinates.
+    feature_id : str, optional
+        Base feature identifier used in the ``id`` property.
+
+    Returns
+    -------
+    dict
+        GeoJSON FeatureCollection with CRS EPSG:4326.
+    """
+    features: List[geojson.Feature] = []
+
+    for idx, coords in enumerate(contours_latlon):
+        # Close polygon if needed
+        if coords and coords[0] != coords[-1]:
+            coords = coords + [coords[0]]
+
+        feature = geojson.Feature(
+            geometry=geojson.Polygon([coords]),
+            properties={"id": f"{feature_id}_{idx}"},
+        )
+        features.append(feature)
+
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+        "crs": {
+            "type": "name",
+            "properties": {"name": "EPSG:4326"},
+        },
+    }
+
+
+def mask_to_geojson(
+    mask: np.ndarray,
+    lat: np.ndarray,
+    lon: np.ndarray,
+    coords: Optional[Tuple[int, int, int, int]] = None,
+    feature_id: str = "CONTRAIL",
+) -> Dict[str, Any]:
+    """
+    Convert a single probability mask to a GeoJSON FeatureCollection.
+
+    Parameters
+    ----------
+    mask : np.ndarray
+        Probability mask in [0, 1] or [0, 255].
+    lat : np.ndarray
+        Latitude grid.
+    lon : np.ndarray
+        Longitude grid.
+    coords : tuple of int, optional
+        (x1, x2, y1, y2) if the mask is a sub-window of the full lat/lon grid.
+    feature_id : str, optional
+        Base ID to use in the GeoJSON feature properties.
+
+    Returns
+    -------
+    dict
+        GeoJSON FeatureCollection.
+    """
+    # Ensure 0–255 uint8 mask for OpenCV
+    if mask.dtype != np.uint8:
+        mask_uint8 = (mask * 255).astype(np.uint8)
+    else:
+        mask_uint8 = mask
+
+    contours = _find_contours(mask_uint8)
+    contours_latlon = _coords_to_latlon(contours, coords, lat, lon)
+    return _contours_to_geojson(contours_latlon, feature_id=feature_id)
+
+
+from typing import Optional, Union, Dict, Any, Literal
+
+import numpy as np
+from pathlib import Path
+import logging
+import matplotlib.pyplot as plt
 
 
 def predict(
     model_path: Path,
     image_path: Path,
     tile_h: int = 250,
-    tile_w: int = 500,
+    tile_w: int = 250,
     stride: int = 100,
-    threshold: float = 0.09,
+    threshold: float = 0.15,
     output: Optional[Path] = None,
     show: bool = False,
     log_level: str = "INFO",
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    product: Literal["overlay", "mask", "geojson"] = "overlay",
+    lat: Optional[np.ndarray] = None,
+    lon: Optional[np.ndarray] = None,
+    coords: Optional[tuple[int, int, int, int]] = None,
+    feature_id: str = "CONTRAIL",
+) -> Union[np.ndarray, Dict[str, Any]]:
     """
-    Run contrail segmentation and optionally save/show the overlay.
+    Run contrail segmentation and return either overlay, mask, or GeoJSON.
 
     Parameters
     ----------
-    model_path : Path or str
-        Path to the trained model weights.
-    image_path : Path or str
+    model_path : Path
+        Path to the trained model file.
+    image_path : Path
         Path to the input image.
-    tile_h : int, optional
-        Tile height in pixels, by default ``250``.
-    tile_w : int, optional
-        Tile width in pixels, by default ``500``.
+    tile_h, tile_w : int, optional
+        Tile size used for sliding-window inference.
     stride : int, optional
-        Stride between tiles in pixels, by default ``100``.
+        Stride (in pixels) between tiles.
     threshold : float, optional
-        Probability threshold, by default ``0.09``.
-    output : Path or str or None, optional
-        Output path for the overlay image. If ``None``, nothing is saved.
+        Probability threshold to binarize the mask.
+    output : Path, optional
+        If given, save the overlay image to this path.
     show : bool, optional
-        If ``True``, display the overlay. Default is ``False``.
-    log_level : {"DEBUG", "INFO", "WARNING", "ERROR"}, optional
-        Logging level, by default ``"INFO"``.
+        If True, display the overlay using matplotlib.
+    log_level : {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}, optional
+        Logging level.
+    product : {"overlay", "mask", "geojson"}, optional
+        What to return:
+        - "overlay": RGB overlay (default, keeps old behaviour of returning an image)
+        - "mask":    probability mask
+        - "geojson": FeatureCollection from the mask (requires lat/lon)
+    lat, lon : np.ndarray, optional
+        Latitude and longitude grids used when product="geojson".
+    coords : tuple of int, optional
+        (x1, x2, y1, y2) indices if the mask corresponds to a sub-window
+        of the full lat/lon grid.
+    feature_id : str, optional
+        Base ID used in GeoJSON properties for product="geojson".
 
     Returns
     -------
-    overlay : numpy.ndarray
-        RGB overlay image.
-    mask : numpy.ndarray
-        Predicted mask.
-    image : numpy.ndarray
-        Original input image.
-
-    Raises
-    ------
-    FileNotFoundError
-        If ``model_path`` or ``image_path`` do not exist.
-    RuntimeError
-        If model loading fails.
+    np.ndarray or dict
+        - If product == "overlay": overlay (H, W, 3) array
+        - If product == "mask":    (H, W) mask
+        - If product == "geojson": dict FeatureCollection
     """
     model_path = Path(model_path)
     image_path = Path(image_path)
@@ -249,6 +438,8 @@ def predict(
         threshold,
     )
 
+    # This still computes both mask and image internally,
+    # but we only *return* one thing depending on `product`.
     mask, image = run_inference(
         model=model,
         image_path=image_path,
@@ -259,22 +450,51 @@ def predict(
         threshold=threshold,
     )
 
-    logging.info("Creating overlay")
-    overlay = overlay_mask_on_image(image, mask)
+    # Only build overlay if we need it (for return / save / show)
+    overlay: Optional[np.ndarray] = None
+    if product == "overlay" or output is not None or show:
+        logging.info("Creating overlay")
+        overlay = overlay_mask_on_image(image, mask)
 
-    if output is not None:
+    # Handle saving/showing overlay if requested
+    if output is not None and overlay is not None:
         output_path = Path(output)
         save_overlay(overlay, output_path)
         logging.info("Saved overlay to %s", output_path)
 
-    if show:
+    if show and overlay is not None:
         plt.figure(figsize=(12, 12))
         plt.imshow(overlay)
         plt.title("Overlay")
         plt.axis("off")
         plt.show()
 
-    return overlay, mask, image
+    # Decide what to return based on `product`
+    if product == "overlay":
+        if overlay is None:
+            overlay = overlay_mask_on_image(image, mask)
+        return overlay
+
+    if product == "mask":
+        return mask
+
+    if product == "geojson":
+        if lat is None or lon is None:
+            raise ValueError(
+                "lat and lon must be provided when product='geojson'."
+            )
+        geojson_fc = mask_to_geojson(
+            mask=mask,
+            lat=lat,
+            lon=lon,
+            coords=coords,
+            feature_id=feature_id,
+        )
+        return geojson_fc
+
+    # This should be unreachable because Literal restricts values, but just in case:
+    raise ValueError(f"Unknown product: {product}")
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -310,19 +530,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--tile-w",
         type=int,
-        default=500,
+        default=250,
         help="Tile width in pixels.",
     )
     parser.add_argument(
         "--stride",
         type=int,
-        default=100,
+        default=125,
         help="Stride between tiles in pixels.",
     )
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.09,
+        default=0.15,
         help="Probability threshold.",
     )
     parser.add_argument(

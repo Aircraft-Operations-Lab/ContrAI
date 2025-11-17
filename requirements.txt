@@ -13,3 +13,5 @@ xarray==2025.6.1
 pyresample==1.31.0
 netCDF4==1.7.3
 h5netcdf==1.7.3
+geojson==3.2.0
+plotly==6.4.0
