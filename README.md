@@ -32,12 +32,14 @@ pip install -U contrai
 ## 🧠 Jupyter Notebook Examples
 
 Explore how to use this package with ready-to-run notebooks:
+- 📕 **[GOES-16 Data Download Example](notebooks/goes16_download.ipynb)**  
+  Explores accessing and downloading GOES-16 ABI satellite imagery, and generating both true-color RGB and false-color ash RGB composites for improved visual interpretation.
 
 - 📘 **[Contrail Detection Example](notebooks/detect_contrails.ipynb)**  
-  Demonstrates how to load satellite imagery and run the contrail detection workflow end-to-end using this package.
+  Demonstrates how to run a contrail detection model on a .png ash RGB image file.
 
 - 📗 **[Polygon Dataset Visualization](notebooks/polygon_based_opencontrails.ipynb)**  
-  Shows how to visualize and inspect the polygon-based contrail dataset, including label overlays and basic statistics.
+  Shows how to visualize and inspect the polygon-based contrail dataset.
 
 ---
 
