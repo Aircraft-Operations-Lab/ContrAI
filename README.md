@@ -42,9 +42,14 @@ Explore how to use this package with ready-to-run notebooks:
   Shows how to visualize and inspect the polygon-based contrail dataset.
 
 ---
-### 🌍 View the interactive plot directly
+### 🌍 Interactive Contrail Detection Demo
+Click the button below to view the fully interactive contrail detection output visualization:
 
-Download <a href="notebooks/contrail_detection_demo.html">contrail_demo.html</a> and open in a browser.
+<p align="center">
+  <a href="https://aircraft-operations-lab.github.io/ContrAI/notebooks/contrail_detection_demo.html" target="_blank">
+    <img src="https://img.shields.io/badge/Open%20Interactive%20Demo-0078D4?style=for-the-badge&logo=google-earth&logoColor=white" alt="View Interactive Demo">
+  </a>
+</p>
 
 ---
 ## 📚 Citation
