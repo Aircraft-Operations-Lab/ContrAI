@@ -42,7 +42,11 @@ Explore how to use this package with ready-to-run notebooks:
   Shows how to visualize and inspect the polygon-based contrail dataset.
 
 ---
+### 🌍 View the interactive plot directly
 
+Download <a href="notebooks/contrail_detection_demo.html">contrail_demo.html</a> and open in a browser.
+
+---
 ## 📚 Citation
 
 If you use this package in your research, please cite:
