@@ -46,7 +46,7 @@ Explore how to use this package with ready-to-run notebooks:
 Click the button below to view the fully interactive contrail detection output visualization:
 
 <p align="center">
-  <a href="https://aircraft-operations-lab.github.io/ContrAI/notebooks/contrail_detection_demo.html" target="_blank">
+  <a href="https://aircraft-operations-lab.github.io/ContrAI/notebooks/contrail_demo.html" target="_blank">
     <img src="https://img.shields.io/badge/Open%20Interactive%20Demo-0078D4?style=for-the-badge&logo=google-earth&logoColor=white" alt="View Interactive Demo">
   </a>
 </p>
