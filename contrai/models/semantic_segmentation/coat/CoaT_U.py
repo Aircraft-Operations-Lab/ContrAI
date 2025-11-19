@@ -278,7 +278,7 @@ class CoaT_U(nn.Module):
         # Optional pretrained weight loading
         if pre is not None:
             sd = torch.load(pre)
-            print(self.enc.load_state_dict(sd, strict=False))
+            self.enc.load_state_dict(sd, strict=False)
 
         # Decoder with U-Net blocks
         self.dec4 = UnetBlock(nc[-1], nc[-2], 384)

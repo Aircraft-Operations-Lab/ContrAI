@@ -2,6 +2,13 @@
 Prediction utilities and CLI for contrail segmentation.
 
 """
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    category=FutureWarning,
+    message="You are using `torch.load` with `weights_only=False`*",
+)
 
 import argparse
 import logging
