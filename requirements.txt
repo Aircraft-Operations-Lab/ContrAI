@@ -15,8 +15,10 @@ torch==2.4.1
 tqdm==4.65.2
 xarray==2025.11.0
 h5py
-
-
+plotly==6.5.0
+pyresample==1.31.0
+cartopy
+geopandas
 
 
 

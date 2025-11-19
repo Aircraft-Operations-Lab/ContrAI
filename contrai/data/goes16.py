@@ -30,11 +30,6 @@ DEFAULT_MAX_TIME_DIFF = timedelta(minutes=30)
 DEFAULT_OUT_ROOT = "images/goes16_l1b"
 DEFAULT_ASH_RGB_ROOT = "images/goes16_ash_rgb"
 
-"""
-FULL_DISK_LAT_BOUNDS = (-60.0, 60.0)
-FULL_DISK_LON_BOUNDS = (-135.0, -15.0)
-"""
-
 DEFAULT_ASH_LAT_BOUNDS = (-60.0, 40.0)
 DEFAULT_ASH_LON_BOUNDS = (-135.0, -15.0)
 DEFAULT_ASH_RES_DEG = 0.02  # ~2 km
